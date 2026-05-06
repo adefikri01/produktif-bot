@@ -1,14 +1,19 @@
+const express = require('express');
 const bot = require('./config/bot');
-require('./services/scheduler');
 
-// Load commands
+// Load semua command
 require('./commands/start');
-require('./commands/jadwal');
 require('./commands/checklist');
-require('./config/db');
+require('./commands/jadwal');
 
-bot.launch();
-console.log('🚀 Bot berjalan...');
+const app = express();
+app.use(express.json());
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// Endpoint webhook Telegram
+app.use(bot.webhookCallback('/webhook'));
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
