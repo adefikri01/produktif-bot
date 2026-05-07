@@ -128,7 +128,7 @@ async function tampilListKegiatan(ctx, page = 1) {
 // ==========================================
 
 bot.action('menu_edit', async (ctx) => {
-  ctx.answerCbQuery().catch(() => {});
+  ctx.answerCbQuery().catch(() => { });
 
   const userId = ctx.from.id;
 
@@ -168,7 +168,7 @@ bot.action('menu_edit', async (ctx) => {
 });
 
 bot.action(/edit_(\d+)/, async (ctx) => {
-  ctx.answerCbQuery().catch(() => {});
+  ctx.answerCbQuery().catch(() => { });
 
   const activityId = parseInt(ctx.match[1]);
 
@@ -209,7 +209,7 @@ bot.action('menu_jadwal', async (ctx) => {
 // ==========================================
 
 bot.action('menu_delete', async (ctx) => {
-  ctx.answerCbQuery().catch(() => {});
+  ctx.answerCbQuery().catch(() => { });
 
   const userId = ctx.from.id;
 
@@ -249,7 +249,7 @@ bot.action('menu_delete', async (ctx) => {
 });
 
 bot.action(/^delete_(\d+)$/, async (ctx) => {
-ctx.answerCbQuery().catch(() => {});
+  ctx.answerCbQuery().catch(() => { });
 
   const activityId = parseInt(ctx.match[1]);
 
@@ -263,31 +263,31 @@ ctx.answerCbQuery().catch(() => {});
 
   const name = result.rows[0].name;
 
- try {
-  await ctx.editMessageText(
-`⚠️ <b>Yakin ingin menghapus "${name}"?</b>
+  try {
+    await ctx.editMessageText(
+      `⚠️ <b>Yakin ingin menghapus "${name}"?</b>
 
 Tindakan ini tidak bisa dibatalkan.`,
-    {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '✅ Ya, Hapus', callback_data: `confirm_delete_${activityId}` },
-            { text: '❌ Batal', callback_data: 'menu_delete' }
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '✅ Ya, Hapus', callback_data: `confirm_delete_${activityId}` },
+              { text: '❌ Batal', callback_data: 'menu_delete' }
+            ]
           ]
-        ]
+        }
       }
-    }
-  );
-} catch (err) {
-  console.log('Pesan sudah sama, skip edit.');
-}
+    );
+  } catch (err) {
+    console.log('Pesan sudah sama, skip edit.');
+  }
 
 });
 
 bot.action(/^confirm_delete_(\d+)$/, async (ctx) => {
-  ctx.answerCbQuery().catch(() => {});
+  ctx.answerCbQuery().catch(() => { });
 
   const activityId = parseInt(ctx.match[1]);
 
@@ -342,9 +342,6 @@ bot.on('text', async (ctx) => {
   const state = getUserState(ctx.from.id);
   console.log("CURRENT STATE:", state);
 
-  if (!state) return;
-
-  const state = getUserState(ctx.from.id);
   if (!state) return;
 
   // ✅ TAMBAH KEGIATAN
@@ -447,7 +444,7 @@ bot.action(/add_day_(.+)/, async (ctx) => {
 });
 
 bot.action('add_finish', async (ctx) => {
-  ctx.answerCbQuery().catch(() => {});
+  ctx.answerCbQuery().catch(() => { });
 
   const state = getUserState(ctx.from.id);
   if (!state || state.action !== 'add_activity') return;
@@ -592,17 +589,17 @@ Silakan pilih menu di bawah 👇`,
 });
 
 bot.action(/list_page_(\d+)/, async (ctx) => {
-  ctx.answerCbQuery().catch(() => {});
+  ctx.answerCbQuery().catch(() => { });
   const page = parseInt(ctx.match[1]);
   await tampilListKegiatan(ctx, page);
 });
 
 bot.action('noop', async (ctx) => {
-  ctx.answerCbQuery().catch(() => {});
+  ctx.answerCbQuery().catch(() => { });
 });
 
 bot.action('menu_list', async (ctx) => {
-  ctx.answerCbQuery().catch(() => {});
+  ctx.answerCbQuery().catch(() => { });
   await tampilListKegiatan(ctx, 1);
 });
 
