@@ -42,23 +42,21 @@ async function tampilListKegiatan(ctx, page = 1) {
   const limit = 5; // maksimal 5 kategori per halaman
   const offset = (page - 1) * limit;
 
-  // Ambil total kategori
+  // Hitung total kategori
   const totalRes = await pool.query(
-    `SELECT COUNT(DISTINCT category)
-     FROM activities
+    `SELECT COUNT(*) FROM categories
      WHERE user_id = $1`,
     [userId]
   );
 
-  const totalCategories = parseInt(totalRes.rows[0].count);
+  const totalCategories = parseInt(totalRes.rows[0].count) || 0;
   const totalPages = Math.ceil(totalCategories / limit) || 1;
 
-  // Ambil kategori per halaman
+  // Ambil kategori untuk halaman ini
   const categoryRes = await pool.query(
-    `SELECT DISTINCT category
-     FROM activities
+    `SELECT id, name FROM categories
      WHERE user_id = $1
-     ORDER BY category ASC
+     ORDER BY name ASC
      LIMIT $2 OFFSET $3`,
     [userId, limit, offset]
   );
@@ -71,12 +69,12 @@ async function tampilListKegiatan(ctx, page = 1) {
     const activityRes = await pool.query(
       `SELECT name
        FROM activities
-       WHERE user_id = $1 AND category = $2
+       WHERE user_id = $1 AND category_id = $2
        ORDER BY name ASC`,
-      [userId, cat.category]
+      [userId, cat.id]
     );
 
-    text += `📂 <b>${cat.category}</b> (${activityRes.rowCount})\n`;
+    text += `📂 <b>${cat.name}</b> (${activityRes.rowCount})\n`;
     text += `────────────────\n`;
 
     for (const act of activityRes.rows) {
@@ -84,6 +82,10 @@ async function tampilListKegiatan(ctx, page = 1) {
     }
 
     text += `\n`;
+  }
+
+  if (categories.length === 0) {
+    text += `Belum ada kegiatan.\n\nTambahkan kegiatan baru dari menu ➕ Tambah.`;
   }
 
   const keyboard = [];
