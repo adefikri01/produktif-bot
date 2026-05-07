@@ -337,6 +337,12 @@ bot.action('menu_add', async (ctx) => {
 });
 
 bot.on('text', async (ctx) => {
+  console.log("TEXT RECEIVED:", ctx.message.text);
+
+  const state = getUserState(ctx.from.id);
+  console.log("CURRENT STATE:", state);
+
+  if (!state) return;
 
   const state = getUserState(ctx.from.id);
   if (!state) return;
