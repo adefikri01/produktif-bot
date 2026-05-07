@@ -47,13 +47,15 @@ function getEffectiveDate() {
 }
 
 
-async function tampilKategori(ctx, baseDate = new Date()) {
+async function tampilKategori(ctx) {
+  const userId = ctx.from.id;
   const tanggal = getEffectiveDate();
   const displayDate = formatDisplayDate(tanggal);
 
-  // ✅ Ambil semua activity
+  // ✅ Ambil semua activity user
   const allActivitiesRes = await pool.query(
-    `SELECT id FROM activities`
+    `SELECT id FROM activities WHERE user_id = $1`,
+    [userId]
   );
 
   const allActivityIds = allActivitiesRes.rows.map(a => a.id);
@@ -67,8 +69,8 @@ async function tampilKategori(ctx, baseDate = new Date()) {
        FROM daily_logs
        WHERE date = $1
        AND is_done = true
-       AND activity_id = ANY($2::int[])`,
-      [tanggal, allActivityIds]
+       AND user_id = $2`,
+      [tanggal, userId]
     );
 
     doneAll = parseInt(doneAllRes.rows[0].count);
@@ -79,41 +81,44 @@ async function tampilKategori(ctx, baseDate = new Date()) {
 
   const overallBar = generateProgressBar(overallProgress);
 
-  // ✅ Ambil kategori
-  const result = await pool.query(
-    `SELECT DISTINCT category FROM activities ORDER BY category ASC`
+  // ✅ Ambil kategori dari table categories
+  const categoryRes = await pool.query(
+    `SELECT id, name FROM categories
+     WHERE user_id = $1
+     ORDER BY name ASC`,
+    [userId]
   );
 
-  const categories = result.rows;
+  const categories = categoryRes.rows;
   const keyboard = [];
 
   for (let i = 0; i < categories.length; i += 2) {
     const row = [];
 
     for (let j = 0; j < 2; j++) {
-      const catObj = categories[i + j];
-      if (!catObj) continue;
+      const cat = categories[i + j];
+      if (!cat) continue;
 
-      const category = catObj.category;
-
-      const activitiesRes = await pool.query(
-        `SELECT id FROM activities WHERE category = $1`,
-        [category]
+      const activityRes = await pool.query(
+        `SELECT id FROM activities
+         WHERE category_id = $1 AND user_id = $2`,
+        [cat.id, userId]
       );
 
-      const activityIds = activitiesRes.rows.map(a => a.id);
+      const activityIds = activityRes.rows.map(a => a.id);
+      const total = activityIds.length;
 
       let done = 0;
-      let total = activityIds.length;
 
       if (total > 0) {
         const doneRes = await pool.query(
-          `SELECT COUNT(*) 
+          `SELECT COUNT(*)
            FROM daily_logs
            WHERE date = $1
            AND is_done = true
-           AND activity_id = ANY($2::int[])`,
-          [tanggal, activityIds]
+           AND user_id = $2
+           AND activity_id = ANY($3::int[])`,
+          [tanggal, userId, activityIds]
         );
 
         done = parseInt(doneRes.rows[0].count);
@@ -123,26 +128,17 @@ async function tampilKategori(ctx, baseDate = new Date()) {
         total === 0 ? '(0/0)' : `(${done}/${total})`;
 
       row.push({
-        text: `${getCategoryEmoji(category)}  ${category} ${progressText}`,
-        callback_data: `category_${category}`
+        text: `${getCategoryEmoji(cat.name)} ${cat.name} ${progressText}`,
+        callback_data: `category_${cat.id}`
       });
     }
 
     keyboard.push(row);
   }
 
-  keyboard.push([{
-    text: '🔄 Reset Hari Ini',
-    callback_data: 'confirm_reset'
-  }]);
-
-  // ✅ Overall status label (sama vibe seperti kategori)
-  let statusLabel;
-  if (overallProgress === 100) statusLabel = '🎉 Semua kategori selesai!';
-  else if (overallProgress >= 75) statusLabel = '💪 Hampir selesai!';
-  else if (overallProgress >= 50) statusLabel = '🔥 Sudah setengah jalan!';
-  else if (overallProgress > 0) statusLabel = '⚡ Sudah mulai, lanjutkan!';
-  else statusLabel = '📋 Belum ada progress hari ini';
+  keyboard.push([
+    { text: '🔄 Reset Hari Ini', callback_data: 'confirm_reset' }
+  ]);
 
   const pesan =
     `🗓 <b>TODAY PLAN</b>
@@ -153,47 +149,43 @@ async function tampilKategori(ctx, baseDate = new Date()) {
 <b>Progress Keseluruhan</b>
 ${overallBar} <b>${overallProgress}%</b>  <i>(${doneAll}/${totalAll})</i>
 
-${statusLabel}
-
 Pilih kategori kegiatan yang ingin kamu lacak 👇`;
 
-  if (ctx.callbackQuery) {
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      ctx.callbackQuery.message.message_id,
-      null,
-      pesan,
-      {
-        parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: keyboard }
-      }
-    );
-  } else {
-    await ctx.reply(pesan, {
-      parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: keyboard }
-    });
-  }
+  await ctx.editMessageText(pesan, {
+    parse_mode: 'HTML',
+    reply_markup: { inline_keyboard: keyboard }
+  });
 }
 
 
 
-async function tampilIsiKategori(ctx, category, baseDate = new Date()) {
+async function tampilIsiKategori(ctx, categoryId) {
   const userId = ctx.from.id;
   const tanggal = getEffectiveDate();
-  const displayDate = formatDisplayDate(tanggal);
+
+  const categoryRes = await pool.query(
+    `SELECT name FROM categories
+     WHERE id = $1 AND user_id = $2`,
+    [categoryId, userId]
+  );
+
+  if (categoryRes.rowCount === 0) return;
+
+  const categoryName = categoryRes.rows[0].name;
 
   const result = await pool.query(
-    `SELECT * FROM activities WHERE category = $1 ORDER BY id ASC`,
-    [category]
+    `SELECT id, name FROM activities
+     WHERE category_id = $1 AND user_id = $2
+     ORDER BY id ASC`,
+    [categoryId, userId]
   );
 
   const kegiatan = result.rows;
 
   const logs = await pool.query(
     `SELECT activity_id FROM daily_logs
-     WHERE date = $1 AND is_done = true`,
-    [tanggal]
+     WHERE date = $1 AND is_done = true AND user_id = $2`,
+    [tanggal, userId]
   );
 
   const doneIds = logs.rows.map(r => r.activity_id);
@@ -203,16 +195,16 @@ async function tampilIsiKategori(ctx, category, baseDate = new Date()) {
   const progress = total === 0 ? 0 : Math.round((done / total) * 100);
   const progressBar = generateProgressBar(progress);
 
-  // Grid 2 kolom
   const keyboard = [];
+
   for (let i = 0; i < kegiatan.length; i += 2) {
     const row = [];
 
     const item1 = kegiatan[i];
     row.push({
       text: doneIds.includes(item1.id)
-        ? `${DONE_EMOJI}  ${item1.name}`
-        : `${UNDONE_EMOJI}  ${item1.name}`,
+        ? `✅ ${item1.name}`
+        : `◻️ ${item1.name}`,
       callback_data: `check_${item1.id}`
     });
 
@@ -220,8 +212,8 @@ async function tampilIsiKategori(ctx, category, baseDate = new Date()) {
     if (item2) {
       row.push({
         text: doneIds.includes(item2.id)
-          ? `${DONE_EMOJI}  ${item2.name}`
-          : `${UNDONE_EMOJI}  ${item2.name}`,
+          ? `✅ ${item2.name}`
+          : `◻️ ${item2.name}`,
         callback_data: `check_${item2.id}`
       });
     }
@@ -229,36 +221,20 @@ async function tampilIsiKategori(ctx, category, baseDate = new Date()) {
     keyboard.push(row);
   }
 
-  keyboard.push([{
-    text: '‹  Kembali ke Kategori',
-    callback_data: 'back_main'
-  }]);
-
-  let statusLabel;
-  if (progress === 100) statusLabel = '🎉 Semua selesai! Luar biasa!';
-  else if (progress >= 75) statusLabel = '💪 Hampir selesai, tetap semangat!';
-  else if (progress >= 50) statusLabel = '🔥 Sudah setengah jalan!';
-  else if (progress > 0) statusLabel = '⚡ Baru mulai, yuk lanjut!';
-  else statusLabel = '📋 Belum ada yang diselesaikan';
+  keyboard.push([
+    { text: '‹  Kembali ke Kategori', callback_data: 'back_main' }
+  ]);
 
   const pesan =
-    `${getCategoryEmoji(category)} <b>${category}</b>
+    `${getCategoryEmoji(categoryName)} <b>${categoryName}</b>
 
 <b>Progress Hari Ini</b>
-${progressBar} <b>${progress}%</b>  <i>(${done}/${total} kegiatan)</i>
+${progressBar} <b>${progress}%</b>  <i>(${done}/${total} kegiatan)</i>`;
 
-${statusLabel}`;
-
-  await ctx.telegram.editMessageText(
-    ctx.chat.id,
-    ctx.callbackQuery?.message?.message_id || ctx.message?.message_id,
-    null,
-    pesan,
-    {
-      parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: keyboard }
-    }
-  );
+  await ctx.editMessageText(pesan, {
+    parse_mode: 'HTML',
+    reply_markup: { inline_keyboard: keyboard }
+  });
 }
 
 module.exports = { tampilKategori, tampilIsiKategori };
