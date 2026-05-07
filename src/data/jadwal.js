@@ -17,7 +17,9 @@ const CATEGORY_EMOJI = {
   keuangan: '💰',
 };
 
-function getCategoryEmoji(name = '') {
+function getCategoryEmoji(name) {
+  if (!name) return '📌';   // ✅ handle null
+
   return CATEGORY_EMOJI[name.toLowerCase()] ?? '📌';
 }
 
