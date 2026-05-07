@@ -337,39 +337,108 @@ bot.action('menu_add', async (ctx) => {
 });
 
 bot.on('text', async (ctx) => {
+  try {
 
-  console.log("📩 TEXT RECEIVED:", ctx.message.text);
+    console.log("📩 TEXT RECEIVED:", ctx.message.text);
 
-  const state = getUserState(ctx.from.id);
-  console.log("🧠 CURRENT STATE:", state);
+    const state = getUserState(ctx.from.id);
+    console.log("🧠 CURRENT STATE:", state);
 
-  if (!state) {
-    console.log("⚠️ NO STATE FOUND");
-    return;
+    if (!state) {
+      console.log("⚠️ NO STATE FOUND");
+      return;
+    }
+
+    // ==============================
+    // ✅ ADD ACTIVITY - STEP 1 (NAME)
+    // ==============================
+    if (state.action === 'add_activity' && state.step === 'waiting_name') {
+
+      state.temp.name = ctx.message.text;
+      state.step = 'waiting_category';
+
+      await ctx.reply(
+        `📂 Pilih kategori untuk "<b>${state.temp.name}</b>":`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🏃 Olahraga', callback_data: 'add_cat_Olahraga' }],
+              [{ text: '📚 Belajar', callback_data: 'add_cat_Belajar' }],
+              [{ text: '🕌 Ibadah', callback_data: 'add_cat_Ibadah' }],
+              [{ text: '➕ Buat Kategori Baru', callback_data: 'add_cat_new' }]
+            ]
+          }
+        }
+      );
+
+      return;
+    }
+
+    // ==============================
+    // ✅ ADD ACTIVITY - NEW CATEGORY
+    // ==============================
+    if (state.action === 'add_activity' && state.step === 'waiting_new_category') {
+
+      state.temp.category = ctx.message.text;
+      state.step = 'waiting_days';
+
+      await ctx.reply(
+        `📅 Pilih hari untuk kegiatan "<b>${state.temp.name}</b>":`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: 'Senin', callback_data: 'add_day_Monday' },
+                { text: 'Selasa', callback_data: 'add_day_Tuesday' }
+              ],
+              [
+                { text: 'Rabu', callback_data: 'add_day_Wednesday' },
+                { text: 'Kamis', callback_data: 'add_day_Thursday' }
+              ],
+              [
+                { text: 'Jumat', callback_data: 'add_day_Friday' },
+                { text: 'Sabtu', callback_data: 'add_day_Saturday' }
+              ],
+              [
+                { text: 'Minggu', callback_data: 'add_day_Sunday' }
+              ],
+              [
+                { text: '✅ Selesai', callback_data: 'add_finish' }
+              ]
+            ]
+          }
+        }
+      );
+
+      return;
+    }
+
+    // ==============================
+    // ✅ EDIT ACTIVITY
+    // ==============================
+    if (state.action === 'edit_activity') {
+
+      const newName = ctx.message.text;
+
+      await pool.query(
+        `UPDATE activities
+         SET name = $1
+         WHERE id = $2 AND user_id = $3`,
+        [newName, state.activityId, ctx.from.id]
+      );
+
+      clearUserState(ctx.from.id);
+
+      await ctx.reply(`✅ Nama kegiatan berhasil diubah menjadi "${newName}"`);
+
+      return;
+    }
+
+  } catch (err) {
+    console.error("❌ ERROR IN TEXT HANDLER:", err);
   }
-
-  // ✅ TAMBAH KEGIATAN
-  if (state.action === 'add_activity' && state.step === 'waiting_name') {
-    // kode tambah nama
-  }
-
-  // ✅ EDIT KEGIATAN
-  if (state.action === 'edit_activity') {
-
-    const newName = ctx.message.text;
-
-    await pool.query(
-      `UPDATE activities
-       SET name = $1
-       WHERE id = $2 AND user_id = $3`,
-      [newName, state.activityId, ctx.from.id]
-    );
-
-    clearUserState(ctx.from.id);
-
-    await ctx.reply(`✅ Nama kegiatan berhasil diubah menjadi "${newName}"`);
-  }
-
 });
 
 bot.action(/add_cat_(.+)/, async (ctx) => {
