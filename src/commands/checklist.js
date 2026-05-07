@@ -439,7 +439,7 @@ bot.action(/add_day_(.+)/, async (ctx) => {
 });
 
 bot.action('add_finish', async (ctx) => {
-  ctx.answerCbQuery().catch(() => { });
+  ctx.answerCbQuery().catch(() => {});
 
   const state = getUserState(ctx.from.id);
   if (!state || state.action !== 'add_activity') return;
@@ -451,17 +451,39 @@ bot.action('add_finish', async (ctx) => {
     return;
   }
 
-  await pool.query(
-    `INSERT INTO daily_logs (activity_id, date, is_done, user_id)
-   VALUES ($1, $2, true, $3)
-   ON CONFLICT (activity_id, date)
-   DO UPDATE SET is_done = true`,
-    [activityId, tanggal, ctx.from.id]
+  // ✅ 1. Pastikan kategori ada
+  let categoryResult = await pool.query(
+    `SELECT id FROM categories
+     WHERE name = $1 AND user_id = $2`,
+    [category, ctx.from.id]
   );
 
-  const activityId = result.rows[0].id;
+  let categoryId;
 
-  // Insert schedule untuk tiap hari
+  if (categoryResult.rowCount === 0) {
+    const newCategory = await pool.query(
+      `INSERT INTO categories (name, user_id)
+       VALUES ($1, $2)
+       RETURNING id`,
+      [category, ctx.from.id]
+    );
+
+    categoryId = newCategory.rows[0].id;
+  } else {
+    categoryId = categoryResult.rows[0].id;
+  }
+
+  // ✅ 2. Insert activity pakai category_id
+  const activityResult = await pool.query(
+    `INSERT INTO activities (name, category_id, user_id)
+     VALUES ($1, $2, $3)
+     RETURNING id`,
+    [name, categoryId, ctx.from.id]
+  );
+
+  const activityId = activityResult.rows[0].id;
+
+  // ✅ 3. Insert schedule untuk tiap hari
   for (const day of days) {
     await pool.query(
       `INSERT INTO schedules (activity_id, day_of_week, user_id)
@@ -477,6 +499,7 @@ bot.action('add_finish', async (ctx) => {
     { parse_mode: 'HTML' }
   );
 });
+
 //setiings
 
 bot.action('menu_settings', async (ctx) => {
