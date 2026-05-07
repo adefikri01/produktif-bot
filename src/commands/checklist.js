@@ -337,12 +337,16 @@ bot.action('menu_add', async (ctx) => {
 });
 
 bot.on('text', async (ctx) => {
-  console.log("TEXT RECEIVED:", ctx.message.text);
+
+  console.log("📩 TEXT RECEIVED:", ctx.message.text);
 
   const state = getUserState(ctx.from.id);
-  console.log("CURRENT STATE:", state);
+  console.log("🧠 CURRENT STATE:", state);
 
-  if (!state) return;
+  if (!state) {
+    console.log("⚠️ NO STATE FOUND");
+    return;
+  }
 
   // ✅ TAMBAH KEGIATAN
   if (state.action === 'add_activity' && state.step === 'waiting_name') {
