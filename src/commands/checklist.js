@@ -3,6 +3,34 @@ const pool = require('../config/database');
 const { tampilIsiKategori, tampilKategori } = require('../data/jadwal');
 const { setUserState, getUserState, clearUserState } = require('../state/userState');
 
+const DAY_NAME_TO_NUMBER = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6
+};
+
+let cachedDailyLogsDateColumn = null;
+
+async function getDailyLogsDateColumn() {
+  if (cachedDailyLogsDateColumn) return cachedDailyLogsDateColumn;
+
+  const res = await pool.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_name = 'daily_logs'
+       AND column_name IN ('effective_date', 'date')
+     ORDER BY CASE WHEN column_name = 'effective_date' THEN 0 ELSE 1 END
+     LIMIT 1`
+  );
+
+  cachedDailyLogsDateColumn = res.rows[0]?.column_name || 'date';
+  return cachedDailyLogsDateColumn;
+}
+
 
 function getEffectiveDate() {
   const now = new Date();
@@ -189,10 +217,11 @@ bot.action('reset_today', async (ctx) => {
   await ctx.answerCbQuery('Reset berhasil ✅');
 
   const tanggal = getEffectiveDate();
+  const dateColumn = await getDailyLogsDateColumn();
 
   await pool.query(
-    `DELETE FROM daily_logs WHERE date = $1`,
-    [tanggal]
+    `DELETE FROM daily_logs WHERE user_id = $1 AND ${dateColumn} = $2`,
+    [ctx.from.id, tanggal]
   );
 
   await tampilKategori(ctx);
@@ -529,53 +558,63 @@ bot.action('add_finish', async (ctx) => {
     return;
   }
 
-  // ✅ 1. Pastikan kategori ada
-  let categoryResult = await pool.query(
-    `SELECT id FROM categories
-     WHERE name = $1 AND user_id = $2`,
-    [category, ctx.from.id]
-  );
-
-  let categoryId;
-
-  if (categoryResult.rowCount === 0) {
-    const newCategory = await pool.query(
-      `INSERT INTO categories (name, user_id)
-       VALUES ($1, $2)
-       RETURNING id`,
+  try {
+    // 1. Pastikan kategori ada
+    let categoryResult = await pool.query(
+      `SELECT id FROM categories
+       WHERE name = $1 AND user_id = $2`,
       [category, ctx.from.id]
     );
 
-    categoryId = newCategory.rows[0].id;
-  } else {
-    categoryId = categoryResult.rows[0].id;
-  }
+    let categoryId;
 
-  // ✅ 2. Insert activity pakai category_id
-  const activityResult = await pool.query(
-    `INSERT INTO activities (name, category_id, user_id)
-     VALUES ($1, $2, $3)
-     RETURNING id`,
-    [name, categoryId, ctx.from.id]
-  );
+    if (categoryResult.rowCount === 0) {
+      const newCategory = await pool.query(
+        `INSERT INTO categories (name, user_id)
+         VALUES ($1, $2)
+         RETURNING id`,
+        [category, ctx.from.id]
+      );
 
-  const activityId = activityResult.rows[0].id;
+      categoryId = newCategory.rows[0].id;
+    } else {
+      categoryId = categoryResult.rows[0].id;
+    }
 
-  // ✅ 3. Insert schedule untuk tiap hari
-  for (const day of days) {
-    await pool.query(
-      `INSERT INTO schedules (activity_id, day_of_week, user_id)
-       VALUES ($1, $2, $3)`,
-      [activityId, day, ctx.from.id]
+    // 2. Insert activity pakai category_id
+    const activityResult = await pool.query(
+      `INSERT INTO activities (name, category_id, user_id)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [name, categoryId, ctx.from.id]
     );
+
+    const activityId = activityResult.rows[0].id;
+
+    // 3. Insert schedule untuk tiap hari (day_of_week harus integer 0-6)
+    for (const day of days) {
+      const dayNumber = DAY_NAME_TO_NUMBER[day];
+
+      if (dayNumber === undefined) continue;
+
+      await pool.query(
+        `INSERT INTO schedules (activity_id, day_of_week, user_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (activity_id, day_of_week) DO NOTHING`,
+        [activityId, dayNumber, ctx.from.id]
+      );
+    }
+
+    clearUserState(ctx.from.id);
+
+    await ctx.editMessageText(
+      `✅ <b>${name}</b> berhasil ditambahkan ke kategori <b>${category}</b>!`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (err) {
+    console.error('❌ Gagal menyimpan kegiatan baru:', err);
+    await ctx.reply('❌ Gagal menyimpan kegiatan. Coba lagi ya.');
   }
-
-  clearUserState(ctx.from.id);
-
-  await ctx.editMessageText(
-    `✅ <b>${name}</b> berhasil ditambahkan ke kategori <b>${category}</b>!`,
-    { parse_mode: 'HTML' }
-  );
 });
 
 //setiings
@@ -681,22 +720,27 @@ bot.action(/check_(\d+)/, async (ctx) => {
 
   const activityId = parseInt(ctx.match[1]);
   const tanggal = getEffectiveDate();
+  const dateColumn = await getDailyLogsDateColumn();
 
   await pool.query(
-    `INSERT INTO daily_logs (activity_id, date, is_done, user_id)
-   VALUES ($1, $2, true, $3)
-   ON CONFLICT (activity_id, date)
-   DO UPDATE SET is_done = true`,
+    `INSERT INTO daily_logs (activity_id, ${dateColumn}, is_done, user_id)
+     VALUES ($1, $2, true, $3)
+     ON CONFLICT (user_id, activity_id, ${dateColumn})
+     DO UPDATE SET is_done = true`,
     [activityId, tanggal, ctx.from.id]
   );
 
   // Ambil kategori dari activity
   const result = await pool.query(
-    `SELECT category FROM activities WHERE id = $1`,
-    [activityId]
+    `SELECT category_id FROM activities WHERE id = $1 AND user_id = $2`,
+    [activityId, ctx.from.id]
   );
 
-  const category = result.rows[0].category;
+  if (!result.rowCount) {
+    return;
+  }
 
-  await tampilIsiKategori(ctx, category);
+  const categoryId = result.rows[0].category_id;
+
+  await tampilIsiKategori(ctx, categoryId);
 });

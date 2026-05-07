@@ -26,6 +26,24 @@ function getCategoryEmoji(name) {
 const DONE_EMOJI = '✅';
 const UNDONE_EMOJI = '◻️';
 
+let cachedDailyLogsDateColumn = null;
+
+async function getDailyLogsDateColumn() {
+  if (cachedDailyLogsDateColumn) return cachedDailyLogsDateColumn;
+
+  const res = await pool.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_name = 'daily_logs'
+       AND column_name IN ('effective_date', 'date')
+     ORDER BY CASE WHEN column_name = 'effective_date' THEN 0 ELSE 1 END
+     LIMIT 1`
+  );
+
+  cachedDailyLogsDateColumn = res.rows[0]?.column_name || 'date';
+  return cachedDailyLogsDateColumn;
+}
+
 function formatDisplayDate(dateString) {
   const date = new Date(dateString);
   return date.toLocaleDateString('en-GB', {
@@ -46,16 +64,34 @@ function getEffectiveDate() {
   return now.toISOString().split('T')[0];
 }
 
+function getEffectiveDayOfWeek() {
+  const now = new Date();
+  const resetHour = 3;
+
+  if (now.getHours() < resetHour) {
+    now.setDate(now.getDate() - 1);
+  }
+
+  return now.getDay();
+}
+
 
 async function tampilKategori(ctx) {
   const userId = ctx.from.id;
   const tanggal = getEffectiveDate();
+  const dayOfWeek = getEffectiveDayOfWeek();
+  const dateColumn = await getDailyLogsDateColumn();
   const displayDate = formatDisplayDate(tanggal);
 
-  // ✅ Ambil semua activity user
+  // Ambil activity user yang dijadwalkan untuk hari efektif
   const allActivitiesRes = await pool.query(
-    `SELECT id FROM activities WHERE user_id = $1`,
-    [userId]
+    `SELECT a.id
+     FROM activities a
+     JOIN schedules s ON s.activity_id = a.id AND s.user_id = a.user_id
+     WHERE a.user_id = $1
+       AND s.day_of_week = $2
+     GROUP BY a.id`,
+    [userId, dayOfWeek]
   );
 
   const allActivityIds = allActivitiesRes.rows.map(a => a.id);
@@ -67,10 +103,11 @@ async function tampilKategori(ctx) {
     const doneAllRes = await pool.query(
       `SELECT COUNT(*) 
        FROM daily_logs
-       WHERE date = $1
+       WHERE ${dateColumn} = $1
        AND is_done = true
-       AND user_id = $2`,
-      [tanggal, userId]
+       AND user_id = $2
+       AND activity_id = ANY($3::int[])`,
+      [tanggal, userId, allActivityIds]
     );
 
     doneAll = parseInt(doneAllRes.rows[0].count);
@@ -100,9 +137,14 @@ async function tampilKategori(ctx) {
       if (!cat) continue;
 
       const activityRes = await pool.query(
-        `SELECT id FROM activities
-         WHERE category_id = $1 AND user_id = $2`,
-        [cat.id, userId]
+        `SELECT a.id
+         FROM activities a
+         JOIN schedules s ON s.activity_id = a.id AND s.user_id = a.user_id
+         WHERE a.category_id = $1
+           AND a.user_id = $2
+           AND s.day_of_week = $3
+         GROUP BY a.id`,
+        [cat.id, userId, dayOfWeek]
       );
 
       const activityIds = activityRes.rows.map(a => a.id);
@@ -114,7 +156,7 @@ async function tampilKategori(ctx) {
         const doneRes = await pool.query(
           `SELECT COUNT(*)
            FROM daily_logs
-           WHERE date = $1
+           WHERE ${dateColumn} = $1
            AND is_done = true
            AND user_id = $2
            AND activity_id = ANY($3::int[])`,
@@ -162,6 +204,8 @@ Pilih kategori kegiatan yang ingin kamu lacak 👇`;
 async function tampilIsiKategori(ctx, categoryId) {
   const userId = ctx.from.id;
   const tanggal = getEffectiveDate();
+  const dayOfWeek = getEffectiveDayOfWeek();
+  const dateColumn = await getDailyLogsDateColumn();
 
   const categoryRes = await pool.query(
     `SELECT name FROM categories
@@ -174,17 +218,21 @@ async function tampilIsiKategori(ctx, categoryId) {
   const categoryName = categoryRes.rows[0].name;
 
   const result = await pool.query(
-    `SELECT id, name FROM activities
-     WHERE category_id = $1 AND user_id = $2
-     ORDER BY id ASC`,
-    [categoryId, userId]
+    `SELECT a.id, a.name
+     FROM activities a
+     JOIN schedules s ON s.activity_id = a.id AND s.user_id = a.user_id
+     WHERE a.category_id = $1
+       AND a.user_id = $2
+       AND s.day_of_week = $3
+     ORDER BY a.id ASC`,
+    [categoryId, userId, dayOfWeek]
   );
 
   const kegiatan = result.rows;
 
   const logs = await pool.query(
     `SELECT activity_id FROM daily_logs
-     WHERE date = $1 AND is_done = true AND user_id = $2`,
+     WHERE ${dateColumn} = $1 AND is_done = true AND user_id = $2`,
     [tanggal, userId]
   );
 
