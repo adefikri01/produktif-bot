@@ -2,6 +2,7 @@ const bot = require('../config/bot');
 const pool = require('../config/database');
 const { tampilIsiKategori, tampilKategori } = require('../data/jadwal');
 const { setUserState, getUserState, clearUserState } = require('../state/userState');
+require('./category');
 
 const DAY_NAME_TO_NUMBER = {
   Sunday: 0,
@@ -671,6 +672,9 @@ Pilih aksi yang ingin dilakukan:`,
           [
             { text: '✏️ Edit', callback_data: 'menu_edit' },
             { text: '🗑️ Hapus', callback_data: 'menu_delete' }
+          ],
+          [
+            { text: '📂 Kategori', callback_data: 'menu_manage_category' }
           ],
           [
             { text: '‹ Kembali', callback_data: 'menu_settings' }

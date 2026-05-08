@@ -4,6 +4,7 @@ const bot = require('./config/bot');
 require('./commands/start');
 require('./commands/checklist');
 require('./commands/jadwal');
+require('./commands/category');
 
 const app = express();
 app.use(express.json());
