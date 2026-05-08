@@ -2,7 +2,6 @@ const bot = require('../config/bot');
 const pool = require('../config/database');
 const { tampilIsiKategori, tampilKategori } = require('../data/jadwal');
 const { setUserState, getUserState, clearUserState } = require('../state/userState');
-require('./category');
 
 const DAY_NAME_TO_NUMBER = {
   Sunday: 0,
