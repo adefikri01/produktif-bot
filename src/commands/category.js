@@ -287,6 +287,11 @@ bot.action(/^confirm_delete_cat_(\d+)$/, async (ctx) => {
 
 bot.on('text', async (ctx) => {
   try {
+    // Skip commands (messages starting with /)
+    if (ctx.message.text.startsWith('/')) {
+      return;
+    }
+
     const state = getUserState(ctx.from.id);
 
     if (!state) return;

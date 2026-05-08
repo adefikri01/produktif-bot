@@ -368,6 +368,10 @@ bot.action('menu_add', async (ctx) => {
 
 bot.on('text', async (ctx) => {
   try {
+    // Skip commands (messages starting with /)
+    if (ctx.message.text.startsWith('/')) {
+      return;
+    }
 
     console.log("📩 TEXT RECEIVED:", ctx.message.text);
 

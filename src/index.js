@@ -1,10 +1,20 @@
 const express = require('express');
 const bot = require('./config/bot');
 
-require('./commands/start');
-require('./commands/checklist');
-require('./commands/jadwal');
-require('./commands/category');
+console.log('🔄 Loading commands...');
+
+try {
+  require('./commands/start');
+  console.log('✅ start.js loaded');
+  require('./commands/checklist');
+  console.log('✅ checklist.js loaded');
+  require('./commands/jadwal');
+  console.log('✅ jadwal.js loaded');
+  require('./commands/category');
+  console.log('✅ category.js loaded');
+} catch (err) {
+  console.error('❌ Error loading commands:', err);
+}
 
 const app = express();
 app.use(express.json());
