@@ -53,9 +53,14 @@ function formatDisplayDate(dateString) {
   }).replace(/ /g, '/');
 }
 
-function getEffectiveDate() {
-  const now = new Date();
+function getEffectiveDate(options = {}) {
+  const now = options.referenceDate ? new Date(options.referenceDate) : new Date();
   const resetHour = 3; // reset jam 3 pagi
+
+  // If caller wants the calendar date (no early-morning shift), return straight away
+  if (options.useCalendarDate) {
+    return now.toISOString().split('T')[0];
+  }
 
   if (now.getHours() < resetHour) {
     now.setDate(now.getDate() - 1);
@@ -64,9 +69,13 @@ function getEffectiveDate() {
   return now.toISOString().split('T')[0];
 }
 
-function getEffectiveDayOfWeek() {
-  const now = new Date();
+function getEffectiveDayOfWeek(options = {}) {
+  const now = options.referenceDate ? new Date(options.referenceDate) : new Date();
   const resetHour = 3;
+
+  if (options.useCalendarDate) {
+    return now.getDay();
+  }
 
   if (now.getHours() < resetHour) {
     now.setDate(now.getDate() - 1);
@@ -76,10 +85,10 @@ function getEffectiveDayOfWeek() {
 }
 
 
-async function tampilKategori(ctx) {
-  const userId = ctx.from.id;
-  const tanggal = getEffectiveDate();
-  const dayOfWeek = getEffectiveDayOfWeek();
+async function tampilKategori(ctx, options = {}) {
+  const userId = ctx.from && ctx.from.id;
+  const tanggal = getEffectiveDate(options);
+  const dayOfWeek = getEffectiveDayOfWeek(options);
   const dateColumn = await getDailyLogsDateColumn();
   const displayDate = formatDisplayDate(tanggal);
 
